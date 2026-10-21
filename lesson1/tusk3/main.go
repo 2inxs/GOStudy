@@ -3,9 +3,13 @@ package main
 import "fmt"
 
 const (
-	YearInMonth = 12
+	MonthInYear = 12
 	Rate        = 0.12
 )
+
+/* по неймингу вопрос у меня есть. Я например когда писал на C++, константы все были в ЗАГЛАВНЫХ_БУКВАХ.
+в Го мне интелиджи подсказывает называть функции в camel. А про константы он мне никак не подсказывает
+всё таки, camaleCase? или формата UpperCamelCase? */
 
 /*
 	про вопрос. Деньги принято держать в копейках или центах.
@@ -16,9 +20,9 @@ float64 все равно не точно представляет больши�
 func bankIncome(deposit float64) {
 	var tick int
 	balance := deposit
-	monthlyRate := Rate / YearInMonth
+	monthlyRate := Rate / MonthInYear
 
-	for i := range YearInMonth {
+	for i := range MonthInYear {
 		income := balance * monthlyRate
 		balance += income
 
