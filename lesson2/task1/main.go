@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type Operation func(a, b float64) (float64, error)
 
@@ -16,7 +19,7 @@ var operations = map[string]Operation{
 	},
 	"/": func(a, b float64) (float64, error) {
 		if b == 0 {
-			return 0, fmt.Errorf("деление на ноль")
+			return 0, errors.New("деление на ноль")
 		}
 		return a / b, nil
 	},

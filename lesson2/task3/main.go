@@ -20,6 +20,14 @@ func Hanoi(n int, from, to, via string, move func(from, to string)) {
 	Hanoi(n-1, via, to, from, move)
 }
 
+func MeasureTime() func() {
+	start := time.Now()
+
+	return func() {
+		fmt.Printf("время: %v\n", time.Since(start))
+	}
+}
+
 func main() {
 	// n = 3
 	count := 0
@@ -40,10 +48,9 @@ func main() {
 		count++
 	}
 
-	start := time.Now()
+	defer MeasureTime()()
 
 	Hanoi(20, "A", "C", "B", countMove)
 
 	fmt.Printf("n=20: %d ходов\n", count)
-	fmt.Printf("время: %v\n", time.Since(start))
 }
