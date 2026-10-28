@@ -3,8 +3,8 @@ package main
 import "fmt"
 
 const (
-	MonthInYear = 12
-	Rate        = 0.12
+	MonthsInYear = 12
+	Rate         = 0.12
 )
 
 /* по неймингу вопрос у меня есть. Я например когда писал на C++, константы все были в ЗАГЛАВНЫХ_БУКВАХ.
@@ -20,9 +20,9 @@ float64 все равно не точно представляет больши�
 func bankIncome(deposit float64) {
 	var tick int
 	balance := deposit
-	monthlyRate := Rate / MonthInYear
+	monthlyRate := Rate / MonthsInYear
 
-	for i := range MonthInYear {
+	for i := range MonthsInYear {
 		income := balance * monthlyRate
 		balance += income
 
