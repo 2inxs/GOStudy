@@ -1,13 +1,16 @@
-package main
+package items
 
 import "fmt"
 
 type Potion struct {
+	id      int
 	name    string
 	weight  float64
 	Effect  string
 	Charges int
 }
+
+func (p *Potion) ID() int { return p.id }
 
 func (p *Potion) Name() string {
 	return p.name
@@ -17,13 +20,13 @@ func (p *Potion) Weight() float64 { return p.weight }
 
 func (p *Potion) Use() (string, error) {
 	if p == nil {
-		return "", fmt.Errorf("зелье отсутствует")
+		return "", ErrNilItem
 	}
 	if p.Charges <= 0 {
-		return "", fmt.Errorf("зелье %s закончилось", p.name)
+		return "", &ItemError{ID: p.id, Name: p.name, Err: ErrNoCharges}
 	}
 	if p.Effect == "" {
-		return "", fmt.Errorf("у зелья %s не задан эффект", p.name)
+		return "", &ItemError{ID: p.id, Name: p.name, Err: fmt.Errorf("не задан эффект: %w", ErrInvalidItem)}
 	}
 	p.Charges--
 	return fmt.Sprintf("Используется %s: %s, осталось зарядов %d", p.name, p.Effect, p.Charges), nil

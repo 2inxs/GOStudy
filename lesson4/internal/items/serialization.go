@@ -1,7 +1,6 @@
-package main
+package items
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"strconv"
@@ -10,37 +9,37 @@ import (
 
 func (w *Weapon) Serialize(writer io.Writer) error {
 	if w == nil {
-		return fmt.Errorf("оружие отсутствует")
+		return ErrNilItem
 	}
 	if strings.ContainsAny(w.name, "|\r\n") {
-		return fmt.Errorf("название оружия содержит разделитель или перенос строки")
+		return fmt.Errorf("название оружия содержит разделитель или перенос строки: %w", ErrInvalidItem)
 	}
-	_, err := fmt.Fprintf(writer, "Weapon|%s|%g|%d|%g|%d|%g\n",
-		w.name, w.Damage, w.Durability, w.weight, w.level, w.quality)
+	_, err := fmt.Fprintf(writer, "Weapon|%s|%g|%d|%g|%d|%g|%d\n",
+		w.name, w.Damage, w.Durability, w.weight, w.level, w.quality, w.id)
 	return err
 }
 
 func (a *Armor) Serialize(writer io.Writer) error {
 	if a == nil {
-		return fmt.Errorf("броня отсутствует")
+		return ErrNilItem
 	}
 	if strings.ContainsAny(a.name, "|\r\n") {
-		return fmt.Errorf("название брони содержит разделитель или перенос строки")
+		return fmt.Errorf("название брони содержит разделитель или перенос строки: %w", ErrInvalidItem)
 	}
-	_, err := fmt.Fprintf(writer, "Armor|%s|%g|%g|%d|%g\n",
-		a.name, a.Defense, a.weight, a.level, a.quality)
+	_, err := fmt.Fprintf(writer, "Armor|%s|%g|%g|%d|%g|%d\n",
+		a.name, a.Defense, a.weight, a.level, a.quality, a.id)
 	return err
 }
 
 func (p *Potion) Serialize(writer io.Writer) error {
 	if p == nil {
-		return fmt.Errorf("зелье отсутствует")
+		return ErrNilItem
 	}
 	if strings.ContainsAny(p.name, "|\r\n") || strings.ContainsAny(p.Effect, "|\r\n") {
-		return fmt.Errorf("название или эффект зелья содержит разделитель или перенос строки")
+		return fmt.Errorf("название или эффект зелья содержит разделитель или перенос строки: %w", ErrInvalidItem)
 	}
-	_, err := fmt.Fprintf(writer, "Potion|%s|%s|%d|%g\n",
-		p.name, p.Effect, p.Charges, p.weight)
+	_, err := fmt.Fprintf(writer, "Potion|%s|%s|%d|%g|%d\n",
+		p.name, p.Effect, p.Charges, p.weight, p.id)
 	return err
 }
 
@@ -51,8 +50,12 @@ func parseRecord(fields []string) (Item, error) {
 
 	switch fields[0] {
 	case "Weapon":
-		if len(fields) != 7 {
-			return nil, fmt.Errorf("для Weapon нужно 7 полей")
+		if len(fields) != 8 {
+			return nil, fmt.Errorf("для Weapon нужно 8 полей")
+		}
+		id, err := strconv.Atoi(fields[7])
+		if err != nil {
+			return nil, fmt.Errorf("неверный ID оружия: %w", err)
 		}
 		damage, err := strconv.ParseFloat(fields[2], 64)
 		if err != nil {
@@ -75,13 +78,17 @@ func parseRecord(fields []string) (Item, error) {
 			return nil, fmt.Errorf("неверное качество оружия: %w", err)
 		}
 		return &Weapon{
-			name: fields[1], Damage: damage, Durability: durability,
+			id: id, name: fields[1], Damage: damage, Durability: durability,
 			weight: weight, level: level, quality: Quality(quality),
 		}, nil
 
 	case "Armor":
-		if len(fields) != 6 {
-			return nil, fmt.Errorf("для Armor нужно 6 полей")
+		if len(fields) != 7 {
+			return nil, fmt.Errorf("для Armor нужно 7 полей")
+		}
+		id, err := strconv.Atoi(fields[6])
+		if err != nil {
+			return nil, fmt.Errorf("неверный ID брони: %w", err)
 		}
 		defense, err := strconv.ParseFloat(fields[2], 64)
 		if err != nil {
@@ -100,13 +107,17 @@ func parseRecord(fields []string) (Item, error) {
 			return nil, fmt.Errorf("неверное качество брони: %w", err)
 		}
 		return &Armor{
-			name: fields[1], Defense: defense, weight: weight,
+			id: id, name: fields[1], Defense: defense, weight: weight,
 			level: level, quality: Quality(quality),
 		}, nil
 
 	case "Potion":
-		if len(fields) != 5 {
-			return nil, fmt.Errorf("для Potion нужно 5 полей")
+		if len(fields) != 6 {
+			return nil, fmt.Errorf("для Potion нужно 6 полей")
+		}
+		id, err := strconv.Atoi(fields[5])
+		if err != nil {
+			return nil, fmt.Errorf("неверный ID зелья: %w", err)
 		}
 		charges, err := strconv.Atoi(fields[3])
 		if err != nil {
@@ -117,15 +128,15 @@ func parseRecord(fields []string) (Item, error) {
 			return nil, fmt.Errorf("неверный вес зелья: %w", err)
 		}
 		return &Potion{
-			name: fields[1], Effect: fields[2], Charges: charges, weight: weight,
+			id: id, name: fields[1], Effect: fields[2], Charges: charges, weight: weight,
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("неизвестный тип предмета: %s", fields[0])
+		return nil, fmt.Errorf("%w: %s", ErrUnknownItemType, fields[0])
 	}
 }
 
-func readItem(r io.Reader) (Item, error) {
+func ReadItem(r io.Reader) (Item, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -133,22 +144,26 @@ func readItem(r io.Reader) (Item, error) {
 	line := strings.TrimSuffix(string(data), "\n")
 	line = strings.TrimSuffix(line, "\r")
 	if strings.ContainsAny(line, "\r\n") {
-		return nil, fmt.Errorf("ожидалась одна строка с предметом")
+		return nil, fmt.Errorf("ожидалась одна строка с предметом: %w", ErrInvalidRecord)
 	}
-	return parseRecord(strings.Split(line, "|"))
+	item, err := parseRecord(strings.Split(line, "|"))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRecord, err)
+	}
+	return item, nil
 }
 
 func (w *Weapon) Deserialize(r io.Reader) error {
 	if w == nil {
-		return fmt.Errorf("оружие отсутствует")
+		return ErrNilItem
 	}
-	item, err := readItem(r)
+	item, err := ReadItem(r)
 	if err != nil {
 		return err
 	}
 	weapon, ok := item.(*Weapon)
 	if !ok {
-		return fmt.Errorf("ожидался Weapon")
+		return fmt.Errorf("ожидался Weapon: %w", ErrInvalidRecord)
 	}
 	*w = *weapon
 	return nil
@@ -156,15 +171,15 @@ func (w *Weapon) Deserialize(r io.Reader) error {
 
 func (a *Armor) Deserialize(r io.Reader) error {
 	if a == nil {
-		return fmt.Errorf("броня отсутствует")
+		return ErrNilItem
 	}
-	item, err := readItem(r)
+	item, err := ReadItem(r)
 	if err != nil {
 		return err
 	}
 	armor, ok := item.(*Armor)
 	if !ok {
-		return fmt.Errorf("ожидался Armor")
+		return fmt.Errorf("ожидался Armor: %w", ErrInvalidRecord)
 	}
 	*a = *armor
 	return nil
@@ -172,50 +187,16 @@ func (a *Armor) Deserialize(r io.Reader) error {
 
 func (p *Potion) Deserialize(r io.Reader) error {
 	if p == nil {
-		return fmt.Errorf("зелье отсутствует")
+		return ErrNilItem
 	}
-	item, err := readItem(r)
+	item, err := ReadItem(r)
 	if err != nil {
 		return err
 	}
 	potion, ok := item.(*Potion)
 	if !ok {
-		return fmt.Errorf("ожидался Potion")
+		return fmt.Errorf("ожидался Potion: %w", ErrInvalidRecord)
 	}
 	*p = *potion
-	return nil
-}
-
-func (inv *Inventory) Save(w io.Writer) error {
-	for _, item := range inv.Items {
-		if isNilItem(item) {
-			return fmt.Errorf("нельзя сохранить отсутствующий предмет")
-		}
-		storable, ok := item.(Storable)
-		if !ok {
-			return fmt.Errorf("предмет %s не поддерживает сохранение", item.Name())
-		}
-		if err := storable.Serialize(w); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (inv *Inventory) Load(r io.Reader) error {
-	scanner := bufio.NewScanner(r)
-	items := make([]Item, 0)
-	for scanner.Scan() {
-		fields := strings.Split(scanner.Text(), "|")
-		item, err := parseRecord(fields)
-		if err != nil {
-			return err
-		}
-		items = append(items, item)
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-	inv.Items = items
 	return nil
 }

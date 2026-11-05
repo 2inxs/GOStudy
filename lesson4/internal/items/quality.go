@@ -1,4 +1,4 @@
-package main
+package items
 
 type Quality float64
 

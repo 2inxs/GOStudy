@@ -1,4 +1,4 @@
-package main
+package items
 
 var _ Item = (*Weapon)(nil)
 var _ Item = (*Armor)(nil)

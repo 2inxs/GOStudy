@@ -1,29 +1,4 @@
-package main
-
-import (
-	"fmt"
-	"reflect"
-)
-
-func isNilItem(i Item) bool {
-	if i == nil {
-		return true
-	}
-	value := reflect.ValueOf(i)
-	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return value.IsNil()
-	default:
-		return false
-	}
-}
-
-func DescribeItem(i Item) string {
-	if isNilItem(i) {
-		return "Предмет отсутствует"
-	}
-	return fmt.Sprintf("%s (вес: %g)", i.Name(), i.Weight())
-}
+package helpers
 
 func Filter[T any](items []T, predicate func(T) bool) []T {
 	result := make([]T, 0, len(items))
