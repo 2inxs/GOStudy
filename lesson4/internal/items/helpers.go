@@ -34,6 +34,18 @@ func IDOf(item Item) int {
 	return identified.ID()
 }
 
+// RegisterID проверяет ID и отмечает его занятым в переданном наборе.
+func RegisterID(used map[int]struct{}, id int) error {
+	if id <= 0 {
+		return fmt.Errorf("ID %d должен быть положительным: %w", id, ErrInvalidItem)
+	}
+	if _, exists := used[id]; exists {
+		return fmt.Errorf("повторяющийся ID %d: %w", id, ErrInvalidItem)
+	}
+	used[id] = struct{}{}
+	return nil
+}
+
 // UseDangerousItem показывает, как перехватить панику на границе операции.
 // Поломка предмета ожидаема, поэтому вызывающий код получает обычный error.
 // При panic строка return item.Use() не выполняется. Начинается раскрутка стека.

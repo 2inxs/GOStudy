@@ -13,88 +13,127 @@ import (
 	"gostudy/lesson4/internal/storage"
 )
 
-func run(args []string, stdout, stderr io.Writer) int {
+type inventoryStore interface {
+	Load(filename string) ([]items.Item, error)
+	Save(filename string, itemList []items.Item) error
+}
+
+type commandRunner struct {
+	store inventoryStore
+}
+
+type commandOptions struct {
+	command  string
+	filename string
+	name     string
+	weight   float64
+	id       int
+}
+
+func parseCommand(args []string, flagOutput io.Writer) (commandOptions, error) {
+	var options commandOptions
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Использование: inventory <list|add|use|delete> [флаги]")
-		return 2
+		return options, errors.New("использование: inventory <list|add|use|delete> [флаги]")
 	}
 
-	command := args[0]
-	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	filename := flags.String("file", "inventory.txt", "файл инвентаря")
-	var name *string
-	var weight *float64
-	var id *int
-	switch command {
+	options.command = args[0]
+	flags := flag.NewFlagSet(options.command, flag.ContinueOnError)
+	flags.SetOutput(flagOutput)
+	flags.StringVar(&options.filename, "file", "inventory.txt", "файл инвентаря")
+	switch options.command {
 	case "list":
 	case "add":
-		name = flags.String("name", "", "название предмета")
-		weight = flags.Float64("weight", 0, "вес предмета")
+		flags.StringVar(&options.name, "name", "", "название предмета")
+		flags.Float64Var(&options.weight, "weight", 0, "вес предмета")
 	case "use", "delete":
-		id = flags.Int("id", 0, "ID предмета")
+		flags.IntVar(&options.id, "id", 0, "ID предмета")
 	default:
-		fmt.Fprintf(stderr, "Неизвестная команда %q\n", command)
-		return 2
+		return options, fmt.Errorf("неизвестная команда %q", options.command)
 	}
 	if err := flags.Parse(args[1:]); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
+		return options, err
+	}
+	if flags.NArg() != 0 || options.filename == "" {
+		return options, errors.New("лишние аргументы или пустой путь к файлу")
+	}
+	switch options.command {
+	case "add":
+		if strings.ContainsAny(options.name, "|\r\n") {
+			return options, errors.New("название предмета содержит разделитель или перенос строки")
 		}
-		return 2
+		options.name = strings.TrimSpace(options.name)
+		if options.name == "" || options.weight <= 0 || math.IsNaN(options.weight) || math.IsInf(options.weight, 0) {
+			return options, errors.New("для add нужны допустимое -name и положительное конечное -weight")
+		}
+	case "use", "delete":
+		if options.id <= 0 {
+			return options, errors.New("укажи положительный -id")
+		}
 	}
-	if flags.NArg() != 0 || *filename == "" {
-		fmt.Fprintln(stderr, "Лишние аргументы или пустой путь к файлу")
-		return 2
+	return options, nil
+}
+
+func (runner commandRunner) run(args []string, stdout, stderr io.Writer) int {
+	var flagOutput strings.Builder
+	options, err := parseCommand(args, &flagOutput)
+	if errors.Is(err, flag.ErrHelp) {
+		if _, err := io.WriteString(stderr, flagOutput.String()); err != nil {
+			return 1
+		}
+		return 0
 	}
-	if command == "add" && (strings.TrimSpace(*name) == "" || strings.ContainsAny(*name, "|\r\n") ||
-		*weight <= 0 || math.IsNaN(*weight) || math.IsInf(*weight, 0)) {
-		fmt.Fprintln(stderr, "Для add нужны допустимое -name и положительное конечное -weight")
-		return 2
-	}
-	if id != nil && *id <= 0 {
-		fmt.Fprintln(stderr, "Укажи положительный -id")
-		return 2
+	if err != nil {
+		if flagOutput.Len() > 0 {
+			return exitWithDiagnostic(stderr, 2, flagOutput.String())
+		}
+		return exitWithDiagnostic(stderr, 2, err.Error()+"\n")
 	}
 
-	itemList, err := storage.LoadFile(*filename)
+	itemList, err := runner.store.Load(options.filename)
 	if err != nil {
 		return reportError(stderr, err)
 	}
-	inv := inventory.Inventory{Items: itemList}
+	var inv inventory.Inventory
+	if err := inv.LoadItems(itemList); err != nil {
+		return reportError(stderr, err)
+	}
 	var message string
-	switch command {
+	switch options.command {
 	case "list":
-		for _, item := range inv.Items {
-			fmt.Fprintln(stdout, items.DescribeItem(item))
+		for _, item := range inv.Items() {
+			if _, err := fmt.Fprintln(stdout, items.DescribeItem(item)); err != nil {
+				return reportError(stderr, fmt.Errorf("вывод списка предметов: %w", err))
+			}
 		}
 		return 0
 	case "add":
-		item := items.NewPotion(0, strings.TrimSpace(*name), *weight, "без эффекта", 1)
+		item := items.NewPotion(0, options.name, options.weight, "без эффекта", 1)
 		itemID := inv.AddItem(item)
 		if itemID == 0 {
-			return reportError(stderr, fmt.Errorf("не удалось назначить ID предмету"))
+			return reportError(stderr, errors.New("не удалось назначить ID предмету"))
 		}
 		message = fmt.Sprintf("Добавлен предмет %q с ID %d", item.Name(), itemID)
 	case "use":
-		item, found := inv.FindItemByID(*id)
+		item, found := inv.FindItemByID(options.id)
 		if !found {
-			return reportError(stderr, fmt.Errorf("предмет с ID %d не найден", *id))
+			return reportError(stderr, fmt.Errorf("предмет с ID %d не найден", options.id))
 		}
 		message, err = items.UseDangerousItem(item)
 		if err != nil {
 			return reportError(stderr, err)
 		}
 	case "delete":
-		if !inv.DeleteItem(*id) {
-			return reportError(stderr, fmt.Errorf("предмет с ID %d не найден", *id))
+		if !inv.DeleteItem(options.id) {
+			return reportError(stderr, fmt.Errorf("предмет с ID %d не найден", options.id))
 		}
-		message = fmt.Sprintf("Удалён предмет с ID %d", *id)
+		message = fmt.Sprintf("Удалён предмет с ID %d", options.id)
 	}
-	if err := storage.SaveFile(*filename, inv.Items); err != nil {
+	if err := runner.store.Save(options.filename, inv.Items()); err != nil {
 		return reportError(stderr, err)
 	}
-	fmt.Fprintln(stdout, message)
+	if _, err := fmt.Fprintln(stdout, message); err != nil {
+		return reportError(stderr, fmt.Errorf("изменения сохранены, вывод результата: %w", err))
+	}
 	return 0
 }
 
@@ -102,13 +141,18 @@ func reportError(stderr io.Writer, err error) int {
 	var parseErr *storage.ParseItemError
 	switch {
 	case errors.As(err, &parseErr):
-		fmt.Fprintf(stderr, "Повреждённая строка %d (%q): %v\n", parseErr.Line, parseErr.Value, parseErr.Err)
+		return exitWithDiagnostic(stderr, 1, fmt.Sprintf("Повреждённая строка %d (%q): %v\n", parseErr.Line, parseErr.Value, parseErr.Err))
 	case errors.Is(err, items.ErrBroken):
-		fmt.Fprintln(stderr, "Предмет сломан:", err)
+		return exitWithDiagnostic(stderr, 1, fmt.Sprintf("Предмет сломан: %v\n", err))
 	case errors.Is(err, items.ErrExhausted):
-		fmt.Fprintln(stderr, "Предмет исчерпан:", err)
+		return exitWithDiagnostic(stderr, 1, fmt.Sprintf("Предмет исчерпан: %v\n", err))
 	default:
-		fmt.Fprintln(stderr, err)
+		return exitWithDiagnostic(stderr, 1, err.Error()+"\n")
 	}
-	return 1
+}
+
+func exitWithDiagnostic(stderr io.Writer, code int, message string) int {
+	// Если stderr недоступен, код выхода всё равно сообщает исходную ошибку.
+	_, _ = io.WriteString(stderr, message)
+	return code
 }

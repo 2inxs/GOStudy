@@ -28,14 +28,16 @@ func TestLoadReplacesInventory(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inv := &inventory.Inventory{Items: []items.Item{original}}
+			var inv inventory.Inventory
+			inv.AddItem(original)
 			if err := inv.Load(strings.NewReader(tt.input)); err != nil {
 				t.Fatalf("Load() returned an unexpected error: %v", err)
 			}
-			if len(inv.Items) != len(tt.want) {
-				t.Fatalf("inventory after Load() has %d items, want %d", len(inv.Items), len(tt.want))
+			itemList := inv.Items()
+			if len(itemList) != len(tt.want) {
+				t.Fatalf("inventory after Load() has %d items, want %d", len(itemList), len(tt.want))
 			}
-			for i, item := range inv.Items {
+			for i, item := range itemList {
 				if !reflect.DeepEqual(item, tt.want[i]) {
 					t.Errorf("item %d = %#v, want %#v", i, item, tt.want[i])
 				}
@@ -68,18 +70,21 @@ func TestFailedLoadPreservesInventory(t *testing.T) {
 			weapon := items.NewWeapon(101, "Меч", 2, 3, items.Rare)
 			weapon.Damage, weapon.Durability = 12.5, 5
 			potion := items.NewPotion(302, "Мана", 0.5, "+20 MP", 2)
-			inv := &inventory.Inventory{Items: []items.Item{weapon, potion}}
+			var inv inventory.Inventory
+			inv.AddItem(weapon)
+			inv.AddItem(potion)
 			wantWeapon, wantPotion := *weapon, *potion
 
 			err := inv.Load(tt.reader)
 			if !errors.Is(err, tt.want) {
 				t.Fatalf("Load() error = %v, want %v", err, tt.want)
 			}
-			if len(inv.Items) != 2 {
-				t.Fatalf("failed Load() changed inventory length to %d, want 2", len(inv.Items))
+			itemList := inv.Items()
+			if len(itemList) != 2 {
+				t.Fatalf("failed Load() changed inventory length to %d, want 2", len(itemList))
 			}
-			if inv.Items[0] != weapon || inv.Items[1] != potion {
-				t.Errorf("failed Load() replaced or reordered existing items: %#v", inv.Items)
+			if itemList[0] != weapon || itemList[1] != potion {
+				t.Errorf("failed Load() replaced or reordered existing items: %#v", itemList)
 			}
 			if *weapon != wantWeapon || *potion != wantPotion {
 				t.Error("failed Load() modified existing items")

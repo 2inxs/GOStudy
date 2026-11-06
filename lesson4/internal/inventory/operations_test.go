@@ -30,8 +30,8 @@ func TestAddItemAfterLoadAndDelete(t *testing.T) {
 		{"duplicate ID", items.NewPotion(301, "Дубликат", 1, "", 1)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if id := inv.AddItem(tt.item); id != 0 || len(inv.Items) != 2 {
-				t.Errorf("rejected AddItem() = %d, item count = %d", id, len(inv.Items))
+			if id := inv.AddItem(tt.item); id != 0 || len(inv.Items()) != 2 {
+				t.Errorf("rejected AddItem() = %d, item count = %d", id, len(inv.Items()))
 			}
 		})
 	}
@@ -56,7 +56,10 @@ func TestInventoryQueries(t *testing.T) {
 	bow := items.NewWeapon(2, "Лук", 1, 1, items.Common)
 	shield := items.NewArmor(3, "Щит", 1, 2, items.Common)
 	potion := items.NewPotion(4, "Мана", 0.5, "+20 MP", 0)
-	inv := inventory.Inventory{Items: []items.Item{sword, potion, bow, shield, (*items.Weapon)(nil)}}
+	var inv inventory.Inventory
+	if err := inv.LoadItems([]items.Item{sword, potion, bow, shield}); err != nil {
+		t.Fatal(err)
+	}
 
 	if got := inv.Weapons(); !slices.Equal(got, []*items.Weapon{sword, bow}) {
 		t.Errorf("Weapons() = %v", got)
@@ -64,7 +67,7 @@ func TestInventoryQueries(t *testing.T) {
 	if got := inv.BrokenItems(); !slices.Equal(got, []items.Item{potion, bow, shield}) {
 		t.Errorf("BrokenItems() = %v", got)
 	}
-	if got := inv.ItemNames(); !slices.Equal(got, []string{"Меч", "Мана", "Лук", "Щит", "Предмет отсутствует"}) {
+	if got := inv.ItemNames(); !slices.Equal(got, []string{"Меч", "Мана", "Лук", "Щит"}) {
 		t.Errorf("ItemNames() = %v", got)
 	}
 	if got, ok := inv.FindItemByName("Щит"); !ok || got != shield {
@@ -72,5 +75,36 @@ func TestInventoryQueries(t *testing.T) {
 	}
 	if got, ok := inv.FindItemByName("Свиток"); ok || got != nil {
 		t.Errorf("FindItemByName(Свиток) = %v, %t", got, ok)
+	}
+}
+
+func TestLoadItemsRejectsInvalidListsAndKeepsItsOwnSlice(t *testing.T) {
+	potion := items.NewPotion(10, "Мана", 1, "", 1)
+	duplicate := items.NewWeapon(10, "Меч", 1, 1, items.Common)
+	unassigned := items.NewPotion(0, "Зелье", 1, "", 1)
+	input := []items.Item{potion}
+	var inv inventory.Inventory
+	if err := inv.LoadItems(input); err != nil {
+		t.Fatal(err)
+	}
+	input[0] = nil
+	output := inv.Items()
+	output[0] = nil
+	for _, tt := range []struct {
+		name string
+		list []items.Item
+	}{
+		{"duplicate ID across types", []items.Item{potion, duplicate}},
+		{"unassigned ID", []items.Item{unassigned}},
+		{"typed nil", []items.Item{(*items.Weapon)(nil)}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := inv.LoadItems(tt.list); err == nil {
+				t.Fatal("LoadItems accepted an invalid list")
+			}
+			if got := inv.Items(); !slices.Equal(got, []items.Item{potion}) {
+				t.Errorf("inventory changed: %v", got)
+			}
+		})
 	}
 }

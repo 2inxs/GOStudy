@@ -7,9 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gostudy/lesson4/internal/items"
+	"gostudy/lesson4/internal/storage"
 )
 
 func TestCommandSequencePersistsInventory(t *testing.T) {
+	runner := commandRunner{store: storage.FileStore{}}
 	path := filepath.Join(t.TempDir(), "inventory.txt")
 	steps := []struct {
 		name string
@@ -27,7 +31,7 @@ func TestCommandSequencePersistsInventory(t *testing.T) {
 	for i, step := range steps {
 		if !t.Run(step.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := run(append(step.args, "-file", path), &stdout, &stderr)
+			code := runner.run(append(step.args, "-file", path), &stdout, &stderr)
 			if code != 0 || stderr.Len() != 0 {
 				t.Fatalf("code = %d, stderr = %q", code, stderr.String())
 			}
@@ -49,6 +53,7 @@ func TestCommandSequencePersistsInventory(t *testing.T) {
 }
 
 func TestCommandErrorCodesAndStreams(t *testing.T) {
+	runner := commandRunner{store: storage.FileStore{}}
 	tests := []struct {
 		name string
 		args []string
@@ -56,12 +61,14 @@ func TestCommandErrorCodesAndStreams(t *testing.T) {
 		code int
 		want string
 	}{
-		{"unknown command", []string{"unknown"}, "", 2, "Неизвестная команда"},
+		{"unknown command", []string{"unknown"}, "", 2, "неизвестная команда"},
 		{"unknown flag", []string{"list", "-id", "1"}, "", 2, "flag provided but not defined"},
 		{"invalid weight", []string{"add", "-name", "Мана", "-weight", "NaN"}, "", 2, "положительное"},
 		{"missing ID", []string{"use"}, "", 2, "положительный -id"},
 		{"missing item", []string{"delete", "-id", "1"}, "", 1, "не найден"},
 		{"malformed line", []string{"list"}, "Potion|Мана|+5 MP|1|0.5|1\nWeapon|Меч\n", 1, `строка 2 ("Weapon|Меч")`},
+		{"duplicate ID in file", []string{"list"}, "Potion|Мана|+5 MP|1|0.5|1\nWeapon|Меч|5|1|2|1|1|1\n", 1, `строка 2 ("Weapon|Меч|5|1|2|1|1|1"): некорректная запись предмета: повторяющийся ID 1`},
+		{"unassigned ID in file", []string{"list"}, "Potion|Мана|+5 MP|1|0.5|0\n", 1, "ID 0 должен быть положительным"},
 		{"broken weapon", []string{"use", "-id", "1"}, "Weapon|Меч|5|0|2|1|1|1\n", 1, "Предмет сломан"},
 		{"empty potion", []string{"use", "-id", "1"}, "Potion|Мана|+5 MP|0|0.5|1\n", 1, "Предмет исчерпан"},
 		{"recovered panic", []string{"use", "-id", "1"}, "Potion|Проклятый предмет|без эффекта|1|0.5|1\n", 1, "сработало проклятие"},
@@ -73,7 +80,7 @@ func TestCommandErrorCodesAndStreams(t *testing.T) {
 				t.Fatal(err)
 			}
 			var stdout, stderr bytes.Buffer
-			code := run(append(tt.args, "-file", path), &stdout, &stderr)
+			code := runner.run(append(tt.args, "-file", path), &stdout, &stderr)
 			if code != tt.code || stdout.Len() != 0 || !strings.Contains(stderr.String(), tt.want) {
 				t.Errorf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
 			}
@@ -86,6 +93,7 @@ func TestCommandErrorCodesAndStreams(t *testing.T) {
 }
 
 func TestCommandReportsFileErrors(t *testing.T) {
+	runner := commandRunner{store: storage.FileStore{}}
 	dir := t.TempDir()
 	for _, tt := range []struct {
 		name string
@@ -97,9 +105,70 @@ func TestCommandReportsFileErrors(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if code := run(tt.args, &stdout, &stderr); code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), tt.want) {
+			if code := runner.run(tt.args, &stdout, &stderr); code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), tt.want) {
 				t.Errorf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
 			}
 		})
 	}
+}
+
+func TestCommandUsesInjectedStore(t *testing.T) {
+	store := &testStore{items: []items.Item{items.NewPotion(41, "Мана", 1, "", 1)}}
+	runner := commandRunner{store: store}
+	var stdout, stderr bytes.Buffer
+	code := runner.run([]string{"add", "-name", "Здоровье", "-weight", "1", "-file", "custom"}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "ID 42") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, stdout.String(), stderr.String())
+	}
+	if store.loadedFrom != "custom" || store.savedTo != "custom" || len(store.items) != 2 || items.IDOf(store.items[1]) != 42 {
+		t.Errorf("load = %q, save = %q, items = %v", store.loadedFrom, store.savedTo, store.items)
+	}
+}
+
+func TestCommandReportsOutputErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		args       []string
+		want       string
+		savedCount int
+	}{
+		{"list", []string{"list"}, "вывод списка предметов", 1},
+		{"add", []string{"add", "-name", "Здоровье", "-weight", "1"}, "изменения сохранены", 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &testStore{items: []items.Item{items.NewPotion(1, "Мана", 1, "", 1)}}
+			runner := commandRunner{store: store}
+			var stderr bytes.Buffer
+			code := runner.run(tt.args, failingWriter{}, &stderr)
+			if code != 1 || !strings.Contains(stderr.String(), tt.want) {
+				t.Errorf("code = %d, stderr = %q", code, stderr.String())
+			}
+			if len(store.items) != tt.savedCount {
+				t.Errorf("saved %d items, want %d", len(store.items), tt.savedCount)
+			}
+		})
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("output unavailable")
+}
+
+type testStore struct {
+	items      []items.Item
+	loadedFrom string
+	savedTo    string
+}
+
+func (s *testStore) Load(filename string) ([]items.Item, error) {
+	s.loadedFrom = filename
+	return s.items, nil
+}
+
+func (s *testStore) Save(filename string, itemList []items.Item) error {
+	s.savedTo = filename
+	s.items = itemList
+	return nil
 }

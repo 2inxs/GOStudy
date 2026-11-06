@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"slices"
@@ -11,7 +12,27 @@ import (
 )
 
 type Inventory struct {
-	Items []items.Item
+	itemList []items.Item
+}
+
+// Items возвращает копию списка. Сами предметы доступны для использования.
+func (inv *Inventory) Items() []items.Item {
+	return slices.Clone(inv.itemList)
+}
+
+// LoadItems заменяет список только после проверки всех предметов.
+func (inv *Inventory) LoadItems(itemList []items.Item) error {
+	usedIDs := make(map[int]struct{}, len(itemList))
+	for index, item := range itemList {
+		if items.IsNilItem(item) {
+			return fmt.Errorf("предмет %d: %w", index+1, items.ErrNilItem)
+		}
+		if err := items.RegisterID(usedIDs, items.IDOf(item)); err != nil {
+			return fmt.Errorf("предмет %d: %w", index+1, err)
+		}
+	}
+	inv.itemList = slices.Clone(itemList)
+	return nil
 }
 
 func (inv *Inventory) AddItem(item items.Item) int {
@@ -32,7 +53,7 @@ func (inv *Inventory) AddItem(item items.Item) int {
 			return 0
 		}
 		maxID := 0
-		for _, existing := range inv.Items {
+		for _, existing := range inv.itemList {
 			maxID = max(maxID, items.IDOf(existing))
 		}
 		if maxID == math.MaxInt {
@@ -42,7 +63,7 @@ func (inv *Inventory) AddItem(item items.Item) int {
 		assignable.SetID(id)
 	}
 
-	inv.Items = append(inv.Items, item)
+	inv.itemList = append(inv.itemList, item)
 	return id
 }
 
@@ -51,7 +72,7 @@ func (inv *Inventory) FindItemByID(id int) (items.Item, bool) {
 	if index < 0 {
 		return nil, false
 	}
-	return inv.Items[index], true
+	return inv.itemList[index], true
 }
 
 func (inv *Inventory) DeleteItem(id int) bool {
@@ -59,7 +80,7 @@ func (inv *Inventory) DeleteItem(id int) bool {
 	if index < 0 {
 		return false
 	}
-	inv.Items = slices.Delete(inv.Items, index, index+1)
+	inv.itemList = slices.Delete(inv.itemList, index, index+1)
 	return true
 }
 
@@ -67,13 +88,13 @@ func (inv *Inventory) indexByID(id int) int {
 	if id <= 0 {
 		return -1
 	}
-	return slices.IndexFunc(inv.Items, func(item items.Item) bool {
+	return slices.IndexFunc(inv.itemList, func(item items.Item) bool {
 		return items.IDOf(item) == id
 	})
 }
 
 func (inv *Inventory) Weapons() []*items.Weapon {
-	weapons := helpers.Filter(inv.Items, func(item items.Item) bool {
+	weapons := helpers.Filter(inv.itemList, func(item items.Item) bool {
 		weapon, ok := item.(*items.Weapon)
 		return ok && weapon != nil
 	})
@@ -83,7 +104,7 @@ func (inv *Inventory) Weapons() []*items.Weapon {
 }
 
 func (inv *Inventory) BrokenItems() []items.Item {
-	return helpers.Filter(inv.Items, func(item items.Item) bool {
+	return helpers.Filter(inv.itemList, func(item items.Item) bool {
 		switch item := item.(type) {
 		case *items.Weapon:
 			return item != nil && item.Durability <= 0
@@ -98,7 +119,7 @@ func (inv *Inventory) BrokenItems() []items.Item {
 }
 
 func (inv *Inventory) ItemNames() []string {
-	return helpers.Map(inv.Items, func(item items.Item) string {
+	return helpers.Map(inv.itemList, func(item items.Item) string {
 		if items.IsNilItem(item) {
 			return "Предмет отсутствует"
 		}
@@ -107,13 +128,13 @@ func (inv *Inventory) ItemNames() []string {
 }
 
 func (inv *Inventory) FindItemByName(name string) (items.Item, bool) {
-	return helpers.Find(inv.Items, func(item items.Item) bool {
+	return helpers.Find(inv.itemList, func(item items.Item) bool {
 		return !items.IsNilItem(item) && item.Name() == name
 	})
 }
 
 func (inv *Inventory) Save(w io.Writer) error {
-	return storage.Save(w, inv.Items)
+	return storage.Save(w, inv.itemList)
 }
 
 func (inv *Inventory) Load(r io.Reader) error {
@@ -121,6 +142,5 @@ func (inv *Inventory) Load(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	inv.Items = loaded
-	return nil
+	return inv.LoadItems(loaded)
 }

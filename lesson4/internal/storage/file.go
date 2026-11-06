@@ -32,6 +32,7 @@ func Save(w io.Writer, itemList []items.Item) error {
 func Load(r io.Reader) ([]items.Item, error) {
 	scanner := bufio.NewScanner(r)
 	loaded := make([]items.Item, 0)
+	usedIDs := make(map[int]struct{})
 	line := 0
 	for scanner.Scan() {
 		line++
@@ -40,12 +41,25 @@ func Load(r io.Reader) ([]items.Item, error) {
 		if err != nil {
 			return nil, &ParseItemError{Line: line, Value: record, Err: err}
 		}
+		if err := items.RegisterID(usedIDs, items.IDOf(item)); err != nil {
+			return nil, &ParseItemError{Line: line, Value: record, Err: fmt.Errorf("%w: %w", items.ErrInvalidRecord, err)}
+		}
 		loaded = append(loaded, item)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("чтение строки %d: %w", line+1, err)
 	}
 	return loaded, nil
+}
+
+type FileStore struct{}
+
+func (FileStore) Load(filename string) ([]items.Item, error) {
+	return LoadFile(filename)
+}
+
+func (FileStore) Save(filename string, itemList []items.Item) error {
+	return SaveFile(filename, itemList)
 }
 
 func LoadFile(filename string) ([]items.Item, error) {
