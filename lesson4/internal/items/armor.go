@@ -2,6 +2,7 @@ package items
 
 import (
 	"fmt"
+	"math"
 	"math/rand/v2"
 )
 
@@ -26,9 +27,13 @@ func (a *Armor) Use() (string, error) {
 	if a == nil {
 		return "", ErrNilItem
 	}
-	if a.Defense < 0 {
-		return "", &ItemError{ID: a.id, Name: a.name, Err: fmt.Errorf("защита не может быть отрицательной: %w", ErrInvalidItem)}
+	if a.Defense < 0 || math.IsNaN(a.Defense) || math.IsInf(a.Defense, 0) {
+		return "", &ItemError{ID: a.id, Name: a.name, Err: fmt.Errorf("защита должна быть конечным неотрицательным числом: %w", ErrInvalidItem)}
 	}
+	if a.Defense == 0 {
+		return "", &ItemError{ID: a.id, Name: a.name, Err: ErrBroken}
+	}
+	a.Defense = max(0, a.Defense-1)
 	return fmt.Sprintf("Используется %s: защита %.2f", a.name, a.Defense), nil
 }
 

@@ -7,15 +7,16 @@ import (
 
 var ErrNotStorable = errors.New("предмет не поддерживает сохранение")
 
-type RecordError struct {
-	Line int
-	Err  error
+type ParseItemError struct {
+	Line  int
+	Value string
+	Err   error
 }
 
-func (e *RecordError) Error() string {
+func (e *ParseItemError) Error() string {
 	return fmt.Sprintf("строка %d: %v", e.Line, e.Err)
 }
 
-func (e *RecordError) Unwrap() error {
+func (e *ParseItemError) Unwrap() error {
 	return e.Err
 }

@@ -7,8 +7,8 @@ import (
 
 var (
 	ErrNilItem         = errors.New("предмет отсутствует")
-	ErrBrokenWeapon    = errors.New("оружие сломано")
-	ErrNoCharges       = errors.New("зелье закончилось")
+	ErrBroken          = errors.New("item is broken")
+	ErrExhausted       = errors.New("item is exhausted")
 	ErrInvalidItem     = errors.New("некорректные параметры предмета")
 	ErrInvalidRecord   = errors.New("некорректная запись предмета")
 	ErrUnknownItemType = errors.New("неизвестный тип предмета")

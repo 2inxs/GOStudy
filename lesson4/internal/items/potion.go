@@ -23,7 +23,7 @@ func (p *Potion) Use() (string, error) {
 		return "", ErrNilItem
 	}
 	if p.Charges <= 0 {
-		return "", &ItemError{ID: p.id, Name: p.name, Err: ErrNoCharges}
+		return "", &ItemError{ID: p.id, Name: p.name, Err: ErrExhausted}
 	}
 	if p.Effect == "" {
 		return "", &ItemError{ID: p.id, Name: p.name, Err: fmt.Errorf("не задан эффект: %w", ErrInvalidItem)}

@@ -23,8 +23,8 @@ func TestWeaponUseConsumesLastDurability(t *testing.T) {
 	}
 
 	message, err = weapon.Use()
-	if !errors.Is(err, items.ErrBrokenWeapon) {
-		t.Fatalf("Use() on a broken weapon returned %v, want ErrBrokenWeapon", err)
+	if !errors.Is(err, items.ErrBroken) {
+		t.Fatalf("Use() on a broken weapon returned %v, want ErrBroken", err)
 	}
 	if message != "" {
 		t.Errorf("failed Use() returned a success message: %q", message)
@@ -56,8 +56,8 @@ func TestPotionUseConsumesLastCharge(t *testing.T) {
 	}
 
 	message, err = potion.Use()
-	if !errors.Is(err, items.ErrNoCharges) {
-		t.Fatalf("Use() on an empty potion returned %v, want ErrNoCharges", err)
+	if !errors.Is(err, items.ErrExhausted) {
+		t.Fatalf("Use() on an empty potion returned %v, want ErrExhausted", err)
 	}
 	if message != "" {
 		t.Errorf("failed Use() returned a success message: %q", message)
@@ -113,7 +113,7 @@ func TestNilItemUse(t *testing.T) {
 	var potion *items.Potion
 	for _, tt := range []struct {
 		name string
-		item items.Usable
+		item items.Item
 	}{
 		{name: "weapon", item: weapon},
 		{name: "armor", item: armor},

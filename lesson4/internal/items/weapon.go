@@ -27,7 +27,7 @@ func (w *Weapon) Use() (string, error) {
 		return "", ErrNilItem
 	}
 	if w.Durability <= 0 {
-		return "", &ItemError{ID: w.id, Name: w.name, Err: ErrBrokenWeapon}
+		return "", &ItemError{ID: w.id, Name: w.name, Err: ErrBroken}
 	}
 	if w.Damage < 0 {
 		return "", &ItemError{ID: w.id, Name: w.name, Err: fmt.Errorf("урон не может быть отрицательным: %w", ErrInvalidItem)}

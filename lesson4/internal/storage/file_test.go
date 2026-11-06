@@ -86,8 +86,8 @@ func TestSaveStopsAtInvalidItem(t *testing.T) {
 			if !errors.As(err, &itemErr) {
 				t.Fatalf("Save() error has no ItemError: %v", err)
 			}
-			if itemErr.ID != tt.item.ID() || itemErr.Name != tt.item.Name() {
-				t.Errorf("ItemError identifies (%d, %q), want (%d, %q)", itemErr.ID, itemErr.Name, tt.item.ID(), tt.item.Name())
+			if itemErr.ID != items.IDOf(tt.item) || itemErr.Name != tt.item.Name() {
+				t.Errorf("ItemError identifies (%d, %q), want (%d, %q)", itemErr.ID, itemErr.Name, items.IDOf(tt.item), tt.item.Name())
 			}
 		})
 	}
@@ -191,12 +191,15 @@ func TestLoadRejectsCorruptRecords(t *testing.T) {
 			if got != nil {
 				t.Errorf("Load() returned partial data after a corrupt record: %#v", got)
 			}
-			var recordErr *storage.RecordError
+			var recordErr *storage.ParseItemError
 			if !errors.As(err, &recordErr) {
-				t.Fatalf("Load() error has no RecordError: %v", err)
+				t.Fatalf("Load() error has no ParseItemError: %v", err)
 			}
 			if recordErr.Line != 2 {
-				t.Errorf("RecordError.Line = %d, want 2", recordErr.Line)
+				t.Errorf("ParseItemError.Line = %d, want 2", recordErr.Line)
+			}
+			if want := strings.TrimSuffix(tt.record, "\n"); recordErr.Value != want {
+				t.Errorf("ParseItemError.Value = %q, want %q", recordErr.Value, want)
 			}
 			if tt.cause != nil && !errors.Is(err, tt.cause) {
 				t.Errorf("Load() error lost its cause %v: %v", tt.cause, err)
@@ -218,12 +221,8 @@ func TestLoadReaderFailure(t *testing.T) {
 	if got != nil {
 		t.Errorf("Load() returned partial data after a reader failure: %#v", got)
 	}
-	var recordErr *storage.RecordError
-	if !errors.As(err, &recordErr) {
-		t.Fatalf("Load() error has no RecordError: %v", err)
-	}
-	if recordErr.Line != 2 {
-		t.Errorf("RecordError.Line = %d, want 2", recordErr.Line)
+	if !strings.Contains(err.Error(), "чтение строки 2") {
+		t.Errorf("Load() error has no line number: %v", err)
 	}
 }
 
@@ -236,20 +235,17 @@ func TestLoadRecordExceedsScannerLimit(t *testing.T) {
 	if got != nil {
 		t.Errorf("Load() returned data for an unreadable record: %#v", got)
 	}
-	var recordErr *storage.RecordError
-	if !errors.As(err, &recordErr) {
-		t.Fatalf("Load() error has no RecordError: %v", err)
-	}
-	if recordErr.Line != 1 {
-		t.Errorf("RecordError.Line = %d, want 1", recordErr.Line)
+	if !strings.Contains(err.Error(), "чтение строки 1") {
+		t.Errorf("Load() error has no line number: %v", err)
 	}
 }
 
 type unstorableItem struct{}
 
-func (unstorableItem) ID() int         { return 401 }
-func (unstorableItem) Name() string    { return "Свиток" }
-func (unstorableItem) Weight() float64 { return 0.1 }
+func (unstorableItem) ID() int              { return 401 }
+func (unstorableItem) Name() string         { return "Свиток" }
+func (unstorableItem) Weight() float64      { return 0.1 }
+func (unstorableItem) Use() (string, error) { return "", nil }
 
 type limitedWriter struct {
 	output    bytes.Buffer

@@ -11,3 +11,7 @@ func NewArmor(id int, name string, level int, weight float64, quality Quality) *
 func NewPotion(id int, name string, weight float64, effect string, charges int) *Potion {
 	return &Potion{id: id, name: name, weight: weight, Effect: effect, Charges: charges}
 }
+
+func (w *Weapon) SetID(id int) { w.id = id }
+func (a *Armor) SetID(id int)  { a.id = id }
+func (p *Potion) SetID(id int) { p.id = id }
